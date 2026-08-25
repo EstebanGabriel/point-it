@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>POINT IT — Prototipo</title>
+<style>
+  :root{
+    --bg:#0a0f0d;
+    --panel:#10221a;
+    --line:#1c3a2b;
+    --green:#39ff8a;
+    --green-dim:#1f8a52;
+    --amber:#f5b942;
+    --red:#ff5b5b;
+    --text:#d9f5e4;
+    --text-dim:#6f9e88;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    --disp: 'Arial Black', 'Helvetica Neue', sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(ellipse at 50% -10%, #12261c 0%, #0a0f0d 60%);
+    color:var(--text); font-family:var(--mono); overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #app{
+    width:100%; max-width:480px; height:100vh; max-height:900px;
+    position:relative; display:flex; flex-direction:column;
+    border-left:1px solid var(--line); border-right:1px solid var(--line);
+  }
+  .screen{
+    flex:1; display:none; flex-direction:column; padding:28px 22px;
+    animation:fadein .35s ease;
+  }
+  .screen.active{display:flex;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  /* scanline texture */
+  #app::before{
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:5;
+    background:repeating-linear-gradient(0deg, rgba(57,255,138,0.025) 0px, rgba(57,255,138,0.025) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:overlay;
+  }
+
+  h1.logo{
+    font-family:var(--disp); font-size:44px; letter-spacing:2px; margin:0;
+    color:var(--green); text-shadow:0 0 18px rgba(57,255,138,.45);
+  }
+  h1.logo span{color:var(--text-dim); font-size:20px; display:block; letter-spacing:6px; font-family:var(--mono); margin-top:4px;}
+  .tag{color:var(--text-dim); font-size:13px; margin-top:10px; line-height:1.5;}
+
+  .eyebrow{font-size:11px; letter-spacing:3px; color:var(--green-dim); text-transform:uppercase; margin-bottom:6px;}
+
+  .btn{
+    font-family:var(--mono); font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    border:1px solid var(--green-dim); background:transparent; color:var(--green);
+    padding:16px; border-radius:6px; font-size:14px; cursor:pointer;
+    transition:all .15s ease; width:100%;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:var(--green); color:#06110a; box-shadow:0 0 24px rgba(57,255,138,.35);}
+  .btn.ghost{border-color:var(--line); color:var(--text-dim);}
+  .btn:disabled{opacity:.35; cursor:not-allowed;}
+
+  .status-line{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin:6px 0;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--line); flex-shrink:0;}
+  .dot.ok{background:var(--green); box-shadow:0 0 8px var(--green);}
+  .dot.bad{background:var(--red);}
+
+  .stack{display:flex; flex-direction:column; gap:10px; margin-top:auto;}
+
+  /* level select */
+  .level-card{
+    border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:10px;
+    cursor:pointer; transition:.15s;
+  }
+  .level-card:active{background:var(--panel);}
+  .level-card.disabled{opacity:.35; pointer-events:none;}
+  .level-num{font-size:11px; color:var(--green-dim); letter-spacing:2px;}
+  .level-name{font-family:var(--disp); font-size:18px; color:var(--text); margin-top:2px;}
+  .level-desc{font-size:11px; color:var(--text-dim); margin-top:4px;}
+
+  /* aim screen */
+  .hud-top{display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); letter-spacing:1px;}
+  .target-name{font-family:var(--disp); font-size:26px; color:var(--green); margin:14px 0 2px; text-shadow:0 0 14px rgba(57,255,138,.4);}
+  .target-sub{font-size:11px; color:var(--text-dim);}
+
+  .visor{
+    flex:1; position:relative; margin:18px 0; border-radius:10px; overflow:hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(57,255,138,.05) 0 1px, transparent 1px 40px),
+      repeating-linear-gradient(90deg, rgba(57,255,138,.05) 0 1px, transparent 1px 40px),
+      #08110c;
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sweep{
+    position:absolute; inset:-20%; border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(57,255,138,.18), transparent 30%);
+    animation:spin 4s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .reticle{position:relative; width:120px; height:120px; z-index:2;}
+  .reticle svg{width:100%; height:100%;}
+  .reticle circle{fill:none; stroke:var(--green); stroke-width:1.4; opacity:.8;}
+  .reticle line{stroke:var(--green); stroke-width:1.4;}
+
+  .heading-readout{position:absolute; bottom:10px; left:0; right:0; text-align:center; font-size:11px; color:var(--text-dim); letter-spacing:2px; z-index:3;}
+
+  .manual-wrap{display:none; flex-direction:column; gap:6px; margin-bottom:10px;}
+  .manual-wrap.show{display:flex;}
+  input[type=range]{width:100%; accent-color:var(--green);}
+
+  .fire-btn{
+    font-family:var(--disp); font-size:20px; letter-spacing:1px;
+    background:linear-gradient(180deg,#ff6b57,#c23a2b); color:#fff; border:none;
+    border-radius:50%; width:110px; height:110px; margin:6px auto 0; cursor:pointer;
+    box-shadow:0 0 0 4px rgba(255,91,91,.15), 0 8px 24px rgba(0,0,0,.5);
+    transition:.12s;
+  }
+  .fire-btn:active{transform:scale(.94); box-shadow:0 0 0 8px rgba(255,91,91,.25);}
+
+  /* results */
+  .result-num{font-family:var(--disp); font-size:52px; color:var(--green); line-height:1;}
+  .result-label{font-size:11px; color:var(--text-dim); letter-spacing:2px; margin-top:2px;}
+  .result-row{display:flex; justify-content:space-between; align-items:flex-end; margin:18px 0;}
+  .msg-box{
+    border:1px solid var(--green-dim); background:rgba(57,255,138,.06); border-radius:8px;
+    padding:14px 16px; font-size:14px; line-height:1.4; margin:10px 0 18px; color:var(--text);
+  }
+  .arc-wrap{border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:16px;}
+  .legend{display:flex; gap:16px; font-size:11px; color:var(--text-dim); margin-top:6px;}
+  .legend span{display:flex; align-items:center; gap:5px;}
+  .swatch{width:14px; height:3px; display:inline-block;}
+
+  /* postal / ilustraciones de lugares */
+  .postcard{
+    border-radius:10px; overflow:hidden; border:1px solid var(--line);
+    margin-bottom:14px; box-shadow:0 10px 26px rgba(0,0,0,.4); position:relative;
+  }
+  .postcard svg{display:block; width:100%; height:auto;}
+  .postcard-caption{
+    position:absolute; bottom:0; left:0; right:0; padding:8px 12px;
+    background:linear-gradient(0deg, rgba(0,0,0,.65), transparent);
+    font-family:var(--disp); font-size:13px; letter-spacing:.5px; color:#fff;
+  }
+  .level-card{display:flex; gap:12px; align-items:center;}
+  .level-thumb{
+    width:64px; height:44px; flex-shrink:0; border-radius:6px; overflow:hidden;
+    border:1px solid var(--line);
+  }
+  .level-thumb svg{display:block; width:100%; height:100%;}
+  .level-body{flex:1; min-width:0;}
+  .level-card.disabled .level-thumb{filter:grayscale(1) brightness(.6);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SETUP -->
+  <div class="screen active" id="screen-setup">
+    <h1 class="logo">POINT IT<span>PROTOTIPO / v0.1</span></h1>
+    <p class="tag">Apuntá el celular hacia donde creas que está el objetivo. Sin mapa, sin brújula en pantalla. Solo tu instinto.</p>
+    <div style="margin-top:28px;">
+      <div class="eyebrow">Estado de sensores</div>
+      <div class="status-line"><span class="dot" id="dot-geo"></span><span id="txt-geo">Ubicación: sin activar</span></div>
+      <div class="status-line"><span class="dot" id="dot-ori"></span><span id="txt-ori">Brújula: sin activar</span></div>
+    </div>
+    <div class="stack">
+      <button class="btn primary" id="btn-activate">ACTIVAR SENSORES</button>
+      <button class="btn ghost" id="btn-manual">CONTINUAR EN MODO MANUAL (PC / SIN GPS)</button>
+    </div>
+  </div>
+
+  <!-- LEVEL SELECT -->
+  <div class="screen" id="screen-levels">
+    <div class="eyebrow">Elegí un nivel</div>
+    <h1 class="logo" style="font-size:26px;">SELECCIONÁ RUMBO</h1>
+    <div style="margin-top:20px; overflow-y:auto;">
+      <div class="level-card" data-level="0">
+        <div class="level-thumb" id="thumb-0"></div>
+        <div class="level-body">
+          <div class="level-num">NIVEL 01</div>
+          <div class="level-name">Turista en la Villa</div>
+          <div class="level-desc">Carlos Paz: Reloj Cucú, Aerosilla, Casino, Cerro de la Cruz.</div>
+        </div>
+      </div>
+      <div class="level-card" data-level="1">
+        <div class="level-thumb" id="thumb-1"></div>
+        <div class="level-body">
+          <div class="level-num">NIVEL 02</div>
+          <div class="level-name">Argentino Federal</div>
+          <div class="level-desc">Obelisco, Aconcagua, Cataratas del Iguazú, Perito Moreno.</div>
+        </div>
+      </div>
+      <div class="level-card" data-level="2">
+        <div class="level-thumb" id="thumb-2"></div>
+        <div class="level-body">
+          <div class="level-num">NIVEL 03</div>
+          <div class="level-name">Trotamundos</div>
+          <div class="level-desc">Torre Eiffel, Pirámides de Giza, Coliseo, Estatua de la Libertad.</div>
+        </div>
+      </div>
+      <div class="level-card disabled" data-level="3">
+        <div class="level-thumb" id="thumb-3"></div>
+        <div class="level-body">
+          <div class="level-num">NIVEL 04</div>
+          <div class="level-name">Galáctico</div>
+          <div class="level-desc">Planetas y estrellas — requiere cálculo astronómico, se suma en la próxima versión.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AIM -->
+  <div class="screen" id="screen-aim">
+    <div class="hud-top"><span id="hud-level">NIVEL 01</span><span id="hud-timer">00:00</span></div>
+    <div class="target-name" id="target-name">UBICACIÓN: —</div>
+    <div class="target-sub" id="target-sub">Girá el cuerpo y apuntá el celu hacia esa dirección.</div>
+
+    <div class="visor">
+      <div class="sweep"></div>
+      <div class="reticle">
+        <svg viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="40"/>
+          <circle cx="60" cy="60" r="4" fill="var(--green)" stroke="none"/>
+          <line x1="60" y1="6" x2="60" y2="26"/>
+          <line x1="60" y1="94" x2="60" y2="114"/>
+          <line x1="6" y1="60" x2="26" y2="60"/>
+          <line x1="94" y1="60" x2="114" y2="60"/>
+        </svg>
+      </div>
+      <div class="heading-readout" id="heading-readout">ORIENTACIÓN OCULTA</div>
+    </div>
+
+    <div class="manual-wrap" id="manual-wrap">
+      <div class="eyebrow">Simulá hacia dónde apunta el celu (modo manual)</div>
+      <input type="range" min="0" max="359" value="0" id="manual-slider">
+    </div>
+
+    <button class="fire-btn" id="btn-fire">FIJAR<br>RUMBO</button>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="screen" id="screen-results">
+    <div class="eyebrow">Resultado</div>
+    <div class="postcard" id="postcard"></div>
+    <div class="result-row">
+      <div><div class="result-num" id="res-deg">0°</div><div class="result-label">GRADOS DE ERROR</div></div>
+      <div style="text-align:right;"><div class="result-num" id="res-km">0</div><div class="result-label">KM DE DIFERENCIA</div></div>
+    </div>
+    <div class="arc-wrap">
+      <svg viewBox="0 0 200 200" width="100%" id="arc-svg"></svg>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--green)"></i>Rumbo correcto</span>
+        <span><i class="swatch" style="background:var(--red)"></i>Tu rumbo</span>
+      </div>
+    </div>
+    <div class="msg-box" id="res-msg">—</div>
+    <div class="stack">
+      <button class="btn primary" id="btn-again">OTRA VUELTA</button>
+      <button class="btn ghost" id="btn-change-level">CAMBIAR DE NIVEL</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const TARGETS = [
+  [ // nivel 0 - Turista en la Villa
+    {name:"RELOJ CUCÚ", sub:"Villa Carlos Paz", lat:-31.4172, lon:-64.5001},
+    {name:"AEROSILLA", sub:"Cerro de la Cruz, base", lat:-31.4227, lon:-64.5075},
+    {name:"CASINO CARLOS PAZ", sub:"Costanera", lat:-31.4224, lon:-64.4979},
+    {name:"CERRO DE LA CRUZ", sub:"Villa Carlos Paz", lat:-31.4308, lon:-64.5107},
+  ],
+  [ // nivel 1 - Argentino Federal
+    {name:"EL OBELISCO", sub:"Buenos Aires", lat:-34.6037, lon:-58.3816},
+    {name:"CERRO ACONCAGUA", sub:"Mendoza", lat:-32.6532, lon:-70.0109},
+    {name:"CATARATAS DEL IGUAZÚ", sub:"Misiones", lat:-25.6953, lon:-54.4367},
+    {name:"GLACIAR PERITO MORENO", sub:"Santa Cruz", lat:-50.4967, lon:-73.0396},
+  ],
+  [ // nivel 2 - Trotamundos
+    {name:"TORRE EIFFEL", sub:"París, Francia", lat:48.8584, lon:2.2945},
+    {name:"PIRÁMIDES DE GIZA", sub:"Egipto", lat:29.9792, lon:31.1342},
+    {name:"COLISEO", sub:"Roma, Italia", lat:41.8902, lon:12.4922},
+    {name:"ESTATUA DE LA LIBERTAD", sub:"Nueva York, EE.UU.", lat:40.6892, lon:-74.0445},
+  ],
+];
+const LEVEL_LABELS = ["NIVEL 01 · TURISTA EN LA VILLA","NIVEL 02 · ARGENTINO FEDERAL","NIVEL 03 · TROTAMUNDOS"];
+
+// --- ilustraciones "postal" (punto medio entre foto y dibujo) ---
+const SCENES = {
+  "RELOJ CUCÚ": {sky:['#ffd9a0','#ff8b6b'], ground:'#2b3a4a', dark:'#3a2a1e', light:'#6b4a33', accent:'#ffce54',
+    body:(u)=>`<rect x="145" y="70" width="30" height="80" fill="url(#${u}-sil)"/>
+      <polygon points="138,70 182,70 160,38" fill="url(#${u}-sil)"/>
+      <circle cx="160" cy="92" r="11" fill="none" stroke="#fff" stroke-width="2"/>
+      <rect x="154" y="150" width="12" height="8" fill="var(--tone)"/>`},
+  "AEROSILLA": {sky:['#bfe6ff','#6fb7e6'], ground:'#4a3b2c', dark:'#244032', light:'#3f6b4f', accent:'#ffce54',
+    body:(u)=>`<polygon points="20,150 160,55 300,150" fill="url(#${u}-sil)"/>
+      <line x1="55" y1="122" x2="285" y2="88" stroke="var(--tone)" stroke-width="2"/>
+      <rect x="164" y="100" width="10" height="12" fill="var(--tone)"/>
+      <circle cx="169" cy="98" r="3.5" fill="var(--tone)"/>`},
+  "CASINO CARLOS PAZ": {sky:['#cfa8e0','#7d5aa6'], ground:'#1b3a52', dark:'#b79a6a', light:'#e8d3a0', accent:'#ffe08a',
+    body:(u)=>`<rect x="105" y="92" width="110" height="58" fill="url(#${u}-sil)"/>
+      <circle cx="160" cy="84" r="22" fill="url(#${u}-sil)"/>
+      <rect x="148" y="58" width="24" height="16" fill="url(#${u}-sil)"/>
+      <line x1="0" y1="160" x2="320" y2="160" stroke="#ffffff" stroke-width="1" opacity=".25"/>`},
+  "CERRO DE LA CRUZ": {sky:['#ffb199','#ff6f61'], ground:'#33210f', dark:'#234d33', light:'#3f7a52', accent:'#f5f5f5',
+    body:(u)=>`<path d="M0,150 Q160,55 320,150 Z" fill="url(#${u}-sil)"/>
+      <line x1="160" y1="35" x2="160" y2="80" stroke="var(--tone)" stroke-width="5"/>
+      <line x1="143" y1="52" x2="177" y2="52" stroke="var(--tone)" stroke-width="5"/>`},
+  "EL OBELISCO": {sky:['#86a8d0','#f2c98a'], ground:'#2b2f36', dark:'#cfd3d8', light:'#f4f6f8', accent:'#fff',
+    body:(u)=>`<polygon points="150,150 170,150 164,45 156,45" fill="url(#${u}-sil)"/>
+      <polygon points="156,45 164,45 160,28" fill="url(#${u}-sil)"/>`},
+  "CERRO ACONCAGUA": {sky:['#cfe8ff','#7fa8d6'], ground:'#3a3f47', dark:'#5b6470', light:'#8b96a3', accent:'#fff',
+    body:(u)=>`<polygon points="10,150 130,55 165,90 195,45 310,150" fill="url(#${u}-sil)"/>
+      <polygon points="130,55 148,73 113,78" fill="#ffffff" opacity="0.9"/>
+      <polygon points="195,45 212,66 178,70" fill="#ffffff" opacity="0.9"/>`},
+  "CATARATAS DEL IGUAZÚ": {sky:['#bfe8d8','#4fae8f'], ground:'#2f4d3a', dark:'#1f4630', light:'#2f6b45', accent:'#eaf6ff',
+    body:(u)=>`<polygon points="0,150 45,102 90,150" fill="url(#${u}-sil)"/>
+      <polygon points="230,150 275,96 320,150" fill="url(#${u}-sil)"/>
+      <path d="M110,55 L118,150 M145,48 L153,150 M180,52 L188,150 M210,60 L218,150" stroke="var(--tone)" stroke-width="7" stroke-linecap="round" opacity="0.9"/>`},
+  "GLACIAR PERITO MORENO": {sky:['#e8f6ff','#a9d4ee'], ground:'#2a5878', dark:'#9fd0ea', light:'#e4f6ff', accent:'#fff',
+    body:(u)=>`<polygon points="0,150 55,92 115,150" fill="url(#${u}-sil)"/>
+      <polygon points="95,150 168,65 245,150" fill="url(#${u}-sil)"/>
+      <polygon points="215,150 272,98 320,150" fill="url(#${u}-sil)"/>`},
+  "TORRE EIFFEL": {sky:['#ffd9a0','#ff9a6b'], ground:'#2a2f38', dark:'#3a3f47', light:'#6b7280', accent:'#ffce54',
+    body:(u)=>`<line x1="128" y1="150" x2="160" y2="66" stroke="url(#${u}-sil)" stroke-width="4"/>
+      <line x1="192" y1="150" x2="160" y2="66" stroke="url(#${u}-sil)" stroke-width="4"/>
+      <polygon points="140,150 180,150 172,108 148,108" fill="url(#${u}-sil)"/>
+      <polygon points="148,108 172,108 164,68 156,68" fill="url(#${u}-sil)"/>
+      <line x1="160" y1="68" x2="160" y2="24" stroke="url(#${u}-sil)" stroke-width="3"/>`},
+  "PIRÁMIDES DE GIZA": {sky:['#ffe3b0','#f2b177'], ground:'#b9895a', dark:'#c99a63', light:'#f0d9a8', accent:'#ffdd6b',
+    body:(u)=>`<circle cx="255" cy="52" r="22" fill="var(--tone)" opacity="0.9"/>
+      <polygon points="150,150 205,92 255,150" fill="url(#${u}-sil)" opacity="0.88"/>
+      <polygon points="55,150 130,72 205,150" fill="url(#${u}-sil)"/>`},
+  "COLISEO": {sky:['#f6cf9a','#e8946b'], ground:'#5a4a3a', dark:'#9c8060', light:'#d8b98a', accent:'#000',
+    body:(u)=>`<path d="M40,150 L40,112 Q160,60 280,112 L280,150 Z" fill="url(#${u}-sil)"/>
+      <rect x="58" y="118" width="13" height="24" fill="var(--groundcolor)"/>
+      <rect x="87" y="107" width="13" height="35" fill="var(--groundcolor)"/>
+      <rect x="116" y="99" width="13" height="43" fill="var(--groundcolor)"/>
+      <rect x="145" y="96" width="13" height="46" fill="var(--groundcolor)"/>
+      <rect x="174" y="99" width="13" height="43" fill="var(--groundcolor)"/>
+      <rect x="203" y="107" width="13" height="35" fill="var(--groundcolor)"/>
+      <rect x="232" y="118" width="13" height="24" fill="var(--groundcolor)"/>`},
+  "ESTATUA DE LA LIBERTAD": {sky:['#bcd9ea','#6f9db5'], ground:'#2b4f5e', dark:'#4d8a72', light:'#7fbfa0', accent:'#ffce54',
+    body:(u)=>`<rect x="150" y="112" width="20" height="38" fill="url(#${u}-sil)"/>
+      <polygon points="140,112 180,112 160,76" fill="url(#${u}-sil)"/>
+      <line x1="172" y1="92" x2="188" y2="58" stroke="url(#${u}-sil)" stroke-width="5"/>
+      <circle cx="190" cy="53" r="7" fill="var(--tone)"/>`},
+};
+let sceneCounter = 0;
+function sceneSVG(name){
+  const s = SCENES[name];
+  if(!s) return '';
+  const u = 'sc'+(sceneCounter++);
+  const markup = s.body(u).replace(/var\(--tone\)/g, s.accent).replace(/var\(--groundcolor\)/g, s.ground);
+  return `<svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${u}-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${s.sky[0]}"/>
+        <stop offset="100%" stop-color="${s.sky[1]}"/>
+      </linearGradient>
+      <linearGradient id="${u}-sil" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${s.light}"/>
+        <stop offset="100%" stop-color="${s.dark}"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="180" fill="url(#${u}-sky)"/>
+    <rect x="0" y="150" width="320" height="30" fill="${s.ground}"/>
+    ${markup}
+  </svg>`;
+}
+function renderLevelThumbs(){
+  const reps = ["RELOJ CUCÚ","EL OBELISCO","TORRE EIFFEL","PIRÁMIDES DE GIZA"];
+  reps.forEach((name, i)=>{
+    const el = $('thumb-'+i);
+    if(el) el.innerHTML = sceneSVG(name);
+  });
+}
+renderLevelThumbs();
+
+let state = {
+  manualMode:false,
+  hasGeo:false,
+  hasOri:false,
+  userLat:null, userLon:null,
+  heading:0,
+  level:0,
+  target:null,
+  startTime:0,
+};
+
+const $ = id => document.getElementById(id);
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+
+// --- geolocation ---
+function activateGeo(){
+  return new Promise((resolve)=>{
+    if(!navigator.geolocation){ resolve(false); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        state.userLat = pos.coords.latitude;
+        state.userLon = pos.coords.longitude;
+        state.hasGeo = true;
+        $('dot-geo').classList.add('ok');
+        $('txt-geo').textContent = 'Ubicación: activa ('+state.userLat.toFixed(3)+', '+state.userLon.toFixed(3)+')';
+        resolve(true);
+      },
+      err=>{
+        $('dot-geo').classList.add('bad');
+        $('txt-geo').textContent = 'Ubicación: rechazada o no disponible';
+        resolve(false);
+      },
+      {enableHighAccuracy:true, timeout:8000}
+    );
+  });
+}
+
+// --- device orientation / compass ---
+function handleOrientation(e){
+  let heading;
+  if (typeof e.webkitCompassHeading === 'number'){
+    heading = e.webkitCompassHeading; // iOS, already 0=North
+  } else if (e.alpha !== null){
+    heading = 360 - e.alpha; // Android approx, adjust so 0=North
+  } else {
+    return;
+  }
+  state.heading = (heading + 360) % 360;
+  if(!state.hasOri){
+    state.hasOri = true;
+    $('dot-ori').classList.add('ok');
+    $('txt-ori').textContent = 'Brújula: activa';
+  }
+}
+
+async function activateOrientation(){
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    try{
+      const res = await DeviceOrientationEvent.requestPermission();
+      if(res === 'granted'){
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        return true;
+      } else {
+        $('dot-ori').classList.add('bad');
+        $('txt-ori').textContent = 'Brújula: permiso denegado';
+        return false;
+      }
+    }catch(err){
+      $('dot-ori').classList.add('bad');
+      $('txt-ori').textContent = 'Brújula: error al pedir permiso';
+      return false;
+    }
+  } else if ('DeviceOrientationEvent' in window){
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    // give it a moment; if nothing arrives, flag as unavailable
+    setTimeout(()=>{
+      if(!state.hasOri){
+        $('txt-ori').textContent = 'Brújula: no se detectó señal (usá modo manual)';
+      }
+    }, 2500);
+    return true;
+  } else {
+    $('dot-ori').classList.add('bad');
+    $('txt-ori').textContent = 'Brújula: no soportada en este navegador';
+    return false;
+  }
+}
+
+$('btn-activate').addEventListener('click', async ()=>{
+  $('btn-activate').textContent = 'ACTIVANDO...';
+  await activateGeo();
+  await activateOrientation();
+  $('btn-activate').textContent = 'ACTIVAR SENSORES';
+  if(state.hasGeo){
+    setTimeout(()=>showScreen('screen-levels'), 500);
+  }
+});
+
+$('btn-manual').addEventListener('click', ()=>{
+  state.manualMode = true;
+  if(state.userLat === null){
+    // default: Villa Carlos Paz coords for testing
+    state.userLat = -31.4201; state.userLon = -64.4998;
+  }
+  showScreen('screen-levels');
+});
+
+// --- level select ---
+document.querySelectorAll('.level-card:not(.disabled)').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    state.level = parseInt(card.dataset.level);
+    const pool = TARGETS[state.level];
+    state.target = pool[Math.floor(Math.random()*pool.length)];
+    startAim();
+  });
+});
+
+$('btn-change-level').addEventListener('click', ()=>showScreen('screen-levels'));
+
+function startAim(){
+  $('hud-level').textContent = LEVEL_LABELS[state.level];
+  $('target-name').textContent = 'UBICACIÓN: ' + state.target.name;
+  $('target-sub').textContent = state.target.sub + ' — Girá el cuerpo y apuntá el celu hacia esa dirección.';
+  $('manual-wrap').classList.toggle('show', state.manualMode || !state.hasOri);
+  state.startTime = Date.now();
+  showScreen('screen-aim');
+  tickTimer();
+}
+
+let timerInt;
+function tickTimer(){
+  clearInterval(timerInt);
+  timerInt = setInterval(()=>{
+    const s = Math.floor((Date.now()-state.startTime)/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    $('hud-timer').textContent = mm+':'+ss;
+  }, 250);
+}
+
+$('manual-slider').addEventListener('input', (e)=>{
+  state.heading = parseInt(e.target.value);
+});
+
+// --- bearing / distance math ---
+function toRad(d){return d*Math.PI/180;}
+function toDeg(r){return r*180/Math.PI;}
+function bearing(lat1,lon1,lat2,lon2){
+  const φ1=toRad(lat1), φ2=toRad(lat2), Δλ=toRad(lon2-lon1);
+  const y = Math.sin(Δλ)*Math.cos(φ2);
+  const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371;
+  const φ1=toRad(lat1), φ2=toRad(lat2);
+  const dφ=toRad(lat2-lat1), dλ=toRad(lon2-lon1);
+  const a = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function angleDiff(a,b){
+  let d = Math.abs(a-b)%360;
+  return d>180 ? 360-d : d;
+}
+function message(err, timeSec){
+  if(err<=5) return "¡GPS en el coco! Precisión de otro nivel. Bonus por Sentido Arácnido activado.";
+  if(err<=15) return "Casi, casi. Te pasaste de largo como bondi lleno, pero anotás puntaje sólido.";
+  if(err<=45) return "Te fuiste para el costado, pero no está mal para no tener brújula en pantalla.";
+  if(err<=90) return "Andás medio perdido, che. Un poco más de estudio de geografía y la sacás.";
+  return "¡Uh, ese rumbo apunta para el lado de Chile! A estudiar el mapa de nuevo.";
+}
+
+$('btn-fire').addEventListener('click', ()=>{
+  clearInterval(timerInt);
+  const elapsed = (Date.now()-state.startTime)/1000;
+  const correctBearing = bearing(state.userLat, state.userLon, state.target.lat, state.target.lon);
+  const err = angleDiff(state.heading, correctBearing);
+  const distKm = haversineKm(state.userLat, state.userLon, state.target.lat, state.target.lon);
+  const errKm = distKm * Math.sin(toRad(err)); // aproximación de desvío lineal
+
+  $('res-deg').textContent = Math.round(err)+'°';
+  $('res-km').textContent = Math.round(errKm).toLocaleString('es-AR');
+  $('res-msg').textContent = message(err, elapsed) + ` (tardaste ${elapsed.toFixed(1)}s, objetivo a ${Math.round(distKm).toLocaleString('es-AR')} km)`;
+
+  $('postcard').innerHTML = sceneSVG(state.target.name) + `<div class="postcard-caption">${state.target.name} · ${state.target.sub}</div>`;
+
+  drawArc(state.heading, correctBearing);
+  showScreen('screen-results');
+});
+
+function drawArc(userHeading, correctHeading){
+  const svg = $('arc-svg');
+  const cx=100, cy=100, r=80;
+  function point(angleDeg){
+    const a = toRad(angleDeg-90); // 0deg = up
+    return [cx + r*Math.cos(a), cy + r*Math.sin(a)];
+  }
+  const [gx,gy] = point(correctHeading);
+  const [rx,ry] = point(userHeading);
+  svg.innerHTML = `
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--line)" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="3" fill="var(--text-dim)"/>
+    <line x1="${cx}" y1="${cy}" x2="${gx}" y2="${gy}" stroke="var(--green)" stroke-width="2.5"/>
+    <line x1="${cx}" y1="${cy}" x2="${rx}" y2="${ry}" stroke="var(--red)" stroke-width="2.5"/>
+  `;
+}
+
+$('btn-again').addEventListener('click', ()=>{
+  const pool = TARGETS[state.level];
+  state.target = pool[Math.floor(Math.random()*pool.length)];
+  startAim();
+});
+</script>
+</body>
+</html>
